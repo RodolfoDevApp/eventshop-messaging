@@ -1,86 +1,89 @@
-name: Publish Rust crates to GitHub Packages
+name: Build & (optional) Publish Rust crates
 
 on:
-  workflow_dispatch:   # lo puedes lanzar manualmente
   push:
-    tags:
-      - "v*.*.*"       # o al pushear un tag semver
+    branches: [ main ]
+  pull_request:
+  # Ejecuta manualmente para publicar en GitHub Packages
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  OWNER: RodolfoDevApp
+  REGISTRY_INDEX: sparse+https://pkgs.github.com/RodolfoDevApp/index/
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  publish-core:
+  build:
+    name: CI build & tests (sin tocar tu repo)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          override: true
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
 
-      - name: Configure Cargo registry (github)
+      # Clave: en CI parcheamos la dependencia del registry a path local
+      - name: Cargo config (patch only for CI)
+        run: |
+          mkdir -p ~/.cargo
+          cat > ~/.cargo/config.toml <<'EOF'
+          [registries]
+          github = { index = "sparse+https://pkgs.github.com/RodolfoDevApp/index/" }
+
+          # Evita ir a pkgs.github.com: resuelve eventshop-messaging-core desde el path local
+          [patch.github]
+          eventshop-messaging-core = { path = "eventshop-messaging-core" }
+          EOF
+          cat ~/.cargo/config.toml
+
+      - name: Build workspace
+        run: cargo build --workspace --all-targets --verbose
+
+      - name: Tests (rabbitmq)
+        run: cargo test -p eventshop-messaging-rabbitmq --verbose
+
+  publish:
+    name: Publish to GitHub Packages
+    needs: build
+    if: github.event_name == 'workflow_dispatch'   # Solo al dispararlo manualmente
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      # Config del registry (sin patch) para publicar
+      - name: Cargo config (registry only)
         run: |
           mkdir -p ~/.cargo
           cat > ~/.cargo/config.toml <<'EOF'
           [registries]
           github = { index = "sparse+https://pkgs.github.com/RodolfoDevApp/index/" }
           EOF
+          cat ~/.cargo/config.toml
 
       - name: Login to GitHub Packages
-        env:
-          CARGO_REGISTRIES_GITHUB_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
+        # cargo login lee el token desde stdin
         run: |
-          # cargo usa el env CARGO_REGISTRIES_<NAME>_TOKEN si existe; no hace falta 'cargo login'
-          echo "Token injected for registry 'github'"
-
-      - name: Build workspace (sanity)
-        run: cargo build --workspace
+          echo "${{ secrets.GITHUB_TOKEN }}" | cargo login --registry github
 
       - name: Publish core
-        working-directory: eventshop-messaging-core
-        env:
-          CARGO_REGISTRIES_GITHUB_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
-        run: |
-          cargo publish --registry github --no-verify
+        run: cargo publish -p eventshop-messaging-core --registry github --verbose
 
-  publish-rabbitmq:
-    needs: publish-core
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          override: true
-
-      - name: Configure Cargo registry (github)
-        run: |
-          mkdir -p ~/.cargo
-          cat > ~/.cargo/config.toml <<'EOF'
-          [registries]
-          github = { index = "sparse+https://pkgs.github.com/RodolfoDevApp/index/" }
-          EOF
-
-      - name: Login to GitHub Packages
-        env:
-          CARGO_REGISTRIES_GITHUB_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
-        run: echo "Token injected"
-
-      - name: Wait for core to propagate
-        run: |
-          # GitHub Packages suele estar listo en segundos; hacemos reintentos cortos
-          for i in {1..10}; do
-            cargo update -p eventshop-messaging-core && break || sleep 6
-          done
+      - name: Wait for index to update
+        run: sleep 40
 
       - name: Publish rabbitmq
-        working-directory: eventshop-messaging-rabbitmq
-        env:
-          CARGO_REGISTRIES_GITHUB_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
-        run: |
-          cargo publish --registry github --no-verify
-
+        run: cargo publish -p eventshop-messaging-rabbitmq --registry github --verbose
