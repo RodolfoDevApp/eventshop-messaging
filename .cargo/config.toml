@@ -1,5 +1,3 @@
+# .cargo/config.toml
 [registries]
 github = { index = "sparse+https://pkgs.github.com/RodolfoDevApp/index/" }
-
-[patch.github]
-eventshop-messaging-core = { path = "eventshop-messaging-core" }

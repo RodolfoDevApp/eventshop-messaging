@@ -1,6 +1,13 @@
+# Cargo.toml (workspace root)
+
 [workspace]
 members = [
-  "eventshop-messaging-core",
-  "eventshop-messaging-rabbitmq"
+    "eventshop-messaging-core",
+    "eventshop-messaging-rabbitmq",
 ]
 resolver = "2"
+
+# CLAVE: durante CI (build del workspace) esto obliga a usar el core local,
+# NO intenta resolver el core en pkgs.github.com.
+[patch.github]
+eventshop-messaging-core = { path = "eventshop-messaging-core" }
