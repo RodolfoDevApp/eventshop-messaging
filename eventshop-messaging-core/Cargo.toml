@@ -1,0 +1,20 @@
+[package]
+name = "eventshop-messaging-core"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/rodolfodevapp/eventshop-messaging"
+homepage = "https://github.com/rodolfodevapp/eventshop-messaging"
+description = "Core contracts (EventBus, callbacks, DTOs) for EventShop messaging."
+keywords = ["messaging", "rabbitmq", "events", "ddd", "cqrs"]
+categories = ["network-programming", "asynchronous"]
+
+[dependencies]
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde", "clock"] }
+thiserror = "1"            # <--- NUEVO

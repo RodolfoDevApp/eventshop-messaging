@@ -1,0 +1,22 @@
+# Rust / Cargo
+/target
+**/*.rs.bk
+Cargo.lock
+
+# IDEs
+/.vscode/
+/.idea/
+/*.code-workspace
+
+# Sistema
+.DS_Store
+Thumbs.db
+
+# Entornos
+.env
+.env.local
+.env.development
+.env.production
+
+# Credenciales Cargo (si llegas a guardarlas locales)
+.cargo/credentials
