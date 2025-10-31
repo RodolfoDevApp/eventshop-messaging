@@ -1,14 +1,15 @@
 [package]
 name = "eventshop-messaging-core"
-version = "0.1.0"
+version = "0.1.1"            # <-- sube version antes de publicar
 edition = "2021"
 license = "MIT"
 readme = "README.md"
-repository = "https://github.com/RodolfoDevApp/eventshop-messaging"
-homepage = "https://github.com/RodolfoDevApp/eventshop-messaging"
+repository = "https://github.com/rodolfodevapp/eventshop-messaging"
+homepage = "https://github.com/rodolfodevapp/eventshop-messaging"
 description = "Core contracts (EventBus, callbacks, DTOs) for EventShop messaging."
 keywords = ["messaging", "events", "ddd", "cqrs"]
 categories = ["network-programming", "asynchronous"]
+publish = ["github"]          # <-- clave: autoriza registry alterno
 
 [dependencies]
 anyhow = "1"

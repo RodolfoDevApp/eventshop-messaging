@@ -1,13 +1,12 @@
-# Cargo.toml (workspace root)
-
+# Cargo.toml (root)
 [workspace]
 members = [
-    "eventshop-messaging-core",
-    "eventshop-messaging-rabbitmq",
+  "eventshop-messaging-core",
+  "eventshop-messaging-rabbitmq",
 ]
 resolver = "2"
 
-# CLAVE: durante CI (build del workspace) esto obliga a usar el core local,
-# NO intenta resolver el core en pkgs.github.com.
-[patch.github]
+# Durante CI: construir usando el core local.
+# Nota: La clave de patch debe ser el URL exacto del index (incluye 'sparse+').
+[patch."sparse+https://pkgs.github.com/RodolfoDevApp/index/"]
 eventshop-messaging-core = { path = "eventshop-messaging-core" }
