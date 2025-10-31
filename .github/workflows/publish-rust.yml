@@ -8,11 +8,11 @@ on:
       publish:
         description: "Publicar en GitHub Packages?"
         required: false
-        default: "false"   # pon "true" cuando quieras publicar
+        default: "false"
 
 permissions:
   contents: read
-  packages: write   # necesario para publicar con GITHUB_TOKEN
+  packages: write
 
 jobs:
   build:
@@ -24,8 +24,6 @@ jobs:
       - name: Setup Rust (stable)
         uses: dtolnay/rust-toolchain@stable
 
-      # NO configuramos registry aquí para build;
-      # con el [patch.github] del root, el core se toma del path local.
       - name: Build workspace
         run: cargo build --workspace --all-targets --verbose
 
@@ -43,7 +41,6 @@ jobs:
       - name: Setup Rust (stable)
         uses: dtolnay/rust-toolchain@stable
 
-      # Registrar el registry SOLO para publicar
       - name: Configure Cargo registries (github)
         run: |
           mkdir -p $HOME/.cargo
@@ -52,21 +49,20 @@ jobs:
           github = { index = "sparse+https://pkgs.github.com/${{ github.repository_owner }}/index/" }
           CFG
 
-      - name: Login (token via env)
+      - name: Login (env token)
         env:
           CARGO_REGISTRIES_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: echo "ok"
 
-      # IMPORTANTE: primero publica el core (version ya debe ser nueva)
       - name: Publish core
         env:
           CARGO_REGISTRIES_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          cargo publish -p eventshop-messaging-core --registry github
+        run: cargo publish -p eventshop-messaging-core --registry github --allow-dirty
 
-      # Luego publica el rabbitmq (version nueva tambien)
+      - name: Wait for core to be available
+        run: sleep 15
+
       - name: Publish rabbitmq
         env:
           CARGO_REGISTRIES_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          cargo publish -p eventshop-messaging-rabbitmq --registry github
+        run: cargo publish -p eventshop-messaging-rabbitmq --registry github --allow-dirty
