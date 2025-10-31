@@ -60,20 +60,17 @@ impl RabbitEventBus {
         .map_err(|e| MessagingError::Connection(e.to_string()))?;
 
         let mut guard = self.state.write().await;
-        *guard = Some(ConnState { _conn: conn, pub_ch: ch });
+        *guard = Some(ConnState {
+            _conn: conn,
+            pub_ch: ch,
+        });
 
         info!("RabbitMQ connected. exchange={}", self.opts.exchange);
         Ok(())
     }
 
     async fn current_channel(&self) -> Result<Channel, MessagingError> {
-        if let Some(ch) = self
-            .state
-            .read()
-            .await
-            .as_ref()
-            .map(|s| s.pub_ch.clone())
-        {
+        if let Some(ch) = self.state.read().await.as_ref().map(|s| s.pub_ch.clone()) {
             return Ok(ch);
         }
         self.connect_once().await?;

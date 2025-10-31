@@ -1,7 +1,7 @@
 // eventshop-messaging-core/src/bus.rs
-use std::sync::Arc;
+use crate::{EventCallback, MessagingError};
 use async_trait::async_trait;
-use crate::{MessagingError, EventCallback};
+use std::sync::Arc;
 
 #[async_trait]
 pub trait EventBus: Send + Sync {

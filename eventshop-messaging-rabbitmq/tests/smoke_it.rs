@@ -1,7 +1,7 @@
-use std::sync::{Arc, Mutex};
-use tokio::sync::oneshot;
 use eventshop_messaging_core::{EventBus, EventCallback, MessagingError};
 use eventshop_messaging_rabbitmq::{RabbitEventBus, RabbitMqOptions};
+use std::sync::{Arc, Mutex};
+use tokio::sync::oneshot;
 
 struct OneShot(Mutex<Option<oneshot::Sender<()>>>);
 
@@ -38,7 +38,8 @@ async fn publish_and_receive() -> Result<(), Box<dyn std::error::Error>> {
     tokio::time::sleep(std::time::Duration::from_millis(400)).await;
 
     // Publicar; la RK it.msg hace match con el patron it.#
-    bus.publish("it.msg", &serde_json::json!({"ok": true})).await?;
+    bus.publish("it.msg", &serde_json::json!({"ok": true}))
+        .await?;
 
     // Esperar confirmacion de recepcion
     tokio::time::timeout(std::time::Duration::from_secs(5), rx).await??;

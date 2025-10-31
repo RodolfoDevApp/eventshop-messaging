@@ -1,8 +1,0 @@
-[build]
-rustflags = ["-C", "target-cpu=native"]
-
-[target.'cfg(unix)']
-runner = "bash"
-
-[registries]
-github = { index = "sparse+https://pkgs.github.com/rodolfodevapp/index" }

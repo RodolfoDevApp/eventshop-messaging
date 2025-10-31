@@ -1,6 +1,6 @@
 // eventshop-messaging-core/src/handler.rs
-use async_trait::async_trait;
 use crate::MessagingError;
+use async_trait::async_trait;
 
 #[async_trait]
 pub trait EventCallback: Send + Sync {

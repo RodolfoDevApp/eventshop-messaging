@@ -11,12 +11,10 @@ pub trait Event: Send + Sync + 'static {}
 
 /// Base message envelope
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(
-    bound(
-        serialize = "TPayload: Serialize",
-        deserialize = "TPayload: serde::de::Deserialize<'de>"
-    )
-)]
+#[serde(bound(
+    serialize = "TPayload: Serialize",
+    deserialize = "TPayload: serde::de::Deserialize<'de>"
+))]
 pub struct Message<TPayload>
 where
     TPayload: Send + Sync + 'static,
@@ -29,12 +27,10 @@ where
 
 /// Integration event envelope
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(
-    bound(
-        serialize = "TEvent: Serialize",
-        deserialize = "TEvent: serde::de::Deserialize<'de>"
-    )
-)]
+#[serde(bound(
+    serialize = "TEvent: Serialize",
+    deserialize = "TEvent: serde::de::Deserialize<'de>"
+))]
 pub struct IntegrationEventEnvelope<TEvent>
 where
     TEvent: Event + Send + Sync + 'static,
