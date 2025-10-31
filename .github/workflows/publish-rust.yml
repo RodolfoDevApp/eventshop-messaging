@@ -1,81 +1,72 @@
-# .github/workflows/publish-rust.yml
-name: Publish Rust crates to GitHub Packages
+name: Rust CI & Publish
 
 on:
-  workflow_dispatch: {}
   push:
-    tags:
-      - "v*.*.*"     # publica cuando subas un tag semántico
+    branches: [ "main" ]
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publicar en GitHub Packages?"
+        required: false
+        default: "false"   # pon "true" cuando quieras publicar
 
 permissions:
   contents: read
-  packages: write   # necesario para publicar a GitHub Packages
-
-env:
-  CARGO_TERM_COLOR: always
-  # Cargo usará este token para autenticar contra el registry "github"
-  CARGO_REGISTRIES_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  packages: write   # necesario para publicar con GITHUB_TOKEN
 
 jobs:
   build:
-    name: Build workspace (sanity)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Rust
+      - name: Setup Rust (stable)
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Configure Cargo (local patch to avoid network for core)
-        run: |
-          mkdir -p .cargo
-          cat > .cargo/config.toml <<'EOF'
-          [registries]
-          github = { index = "sparse+https://pkgs.github.com/RodolfoDevApp/index/" }
-
-          # IMPORTANTE: este archivo vive en el repo => path relativo al repo
-          [patch.github]
-          eventshop-messaging-core = { path = "eventshop-messaging-core" }
-          EOF
-          echo "== .cargo/config.toml ====================="
-          cat .cargo/config.toml
-          echo "=========================================="
-
+      # NO configuramos registry aquí para build;
+      # con el [patch.github] del root, el core se toma del path local.
       - name: Build workspace
         run: cargo build --workspace --all-targets --verbose
 
+      - name: Test workspace
+        run: cargo test --workspace --verbose
+
   publish:
-    name: Publish crates (core -> rabbitmq)
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish == 'true' }}
     needs: build
-    if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Rust
+      - name: Setup Rust (stable)
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Configure Cargo (registry only)
+      # Registrar el registry SOLO para publicar
+      - name: Configure Cargo registries (github)
         run: |
-          mkdir -p .cargo
-          cat > .cargo/config.toml <<'EOF'
+          mkdir -p $HOME/.cargo
+          cat > $HOME/.cargo/config.toml <<'CFG'
           [registries]
-          github = { index = "sparse+https://pkgs.github.com/RodolfoDevApp/index/" }
-          EOF
-          echo "== .cargo/config.toml (publish) =========="
-          cat .cargo/config.toml
-          echo "=========================================="
+          github = { index = "sparse+https://pkgs.github.com/${{ github.repository_owner }}/index/" }
+          CFG
 
-      # 1) Publica el core primero
+      - name: Login (token via env)
+        env:
+          CARGO_REGISTRIES_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: echo "ok"
+
+      # IMPORTANTE: primero publica el core (version ya debe ser nueva)
       - name: Publish core
-        run: cargo publish -p eventshop-messaging-core --registry github
+        env:
+          CARGO_REGISTRIES_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cargo publish -p eventshop-messaging-core --registry github
 
-      # Espera a que el index de GitHub Packages se actualice
-      - name: Wait for index to update
-        run: sleep 40
-
-      # 2) Publica el adaptador de RabbitMQ que depende del core ya publicado
+      # Luego publica el rabbitmq (version nueva tambien)
       - name: Publish rabbitmq
-        run: cargo publish -p eventshop-messaging-rabbitmq --registry github
+        env:
+          CARGO_REGISTRIES_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cargo publish -p eventshop-messaging-rabbitmq --registry github
