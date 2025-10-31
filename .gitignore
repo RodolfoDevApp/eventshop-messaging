@@ -18,5 +18,3 @@ Thumbs.db
 .env.development
 .env.production
 
-# Credenciales Cargo (si llegas a guardarlas locales)
-.cargo/credentials
