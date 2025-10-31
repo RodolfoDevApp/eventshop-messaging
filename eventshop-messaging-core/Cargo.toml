@@ -11,8 +11,8 @@ keywords = ["messaging", "events", "ddd", "cqrs"]
 categories = ["network-programming", "asynchronous"]
 
 [dependencies]
-anyhow = { workspace = true }
-async-trait = { workspace = true }
+anyhow = "1"
+async-trait = "0.1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 uuid = { version = "1", features = ["v4", "serde"] }
