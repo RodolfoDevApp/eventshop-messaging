@@ -4,9 +4,9 @@ version = "0.1.0"
 edition = "2021"
 license = "MIT"
 readme = "README.md"
-repository = "https://github.com/rodolfodevapp/eventshop-messaging"
-homepage = "https://github.com/rodolfodevapp/eventshop-messaging"
-description = "Core contracts (EventBus, callbacks, DTOs) for EventShop messaging."
+repository = "https://github.com/RodolfoDevApp/eventshop-messaging"
+homepage = "https://github.com/RodolfoDevApp/eventshop-messaging"
+description = "RabbitMQ transport for EventShop messaging."
 keywords = ["messaging", "rabbitmq", "events", "ddd", "cqrs"]
 categories = ["network-programming", "asynchronous"]
 
@@ -17,6 +17,9 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time"
 futures-util = "0.3"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-async-trait = "0.1"          
+async-trait = "0.1"
 tracing = "0.1"
 tracing-futures = "0.2"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }
