@@ -1,2 +1,0 @@
-[registries]
-github = { index = "sparse+https://pkgs.github.com/RodolfoDevApp/index/" }
