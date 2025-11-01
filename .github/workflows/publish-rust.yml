@@ -63,12 +63,24 @@ jobs:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish == 'true' }}
     needs: build
     runs-on: ubuntu-latest
+    env:
+      # A veces HTTP/2 da lata con proxies intermedios; forzamos HTTP/1.1
+      CARGO_HTTP_MULTIPLEXING: "false"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Setup Rust (stable)
         uses: dtolnay/rust-toolchain@stable
+
+      # Forzar DNS publico (runner a veces no resuelve pkgs.github.com)
+      - name: Fix DNS for pkgs.github.com
+        run: |
+          sudo bash -c 'printf "nameserver 1.1.1.1\nnameserver 8.8.8.8\n" > /etc/resolv.conf'
+          echo "Testing DNS..."
+          getent hosts pkgs.github.com
+          echo "Testing HTTPS reachability..."
+          curl -I --retry 5 --retry-all-errors --connect-timeout 5 https://pkgs.github.com/ || true
 
       - name: Configure Cargo registries (publish)
         run: |
@@ -89,13 +101,18 @@ jobs:
           CARGO_REGISTRIES_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: echo "ok"
 
-      - name: Publish core
+      - name: Publish core (retry)
         env:
           CARGO_REGISTRIES_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: cargo publish -p eventshop-messaging-core --registry github --allow-dirty
+        run: |
+          for i in 1 2 3; do
+            cargo publish -p eventshop-messaging-core --registry github --allow-dirty && exit 0
+            echo "publish core attempt $i failed; retrying..."; sleep 10
+          done
+          echo "publish core failed after retries" && exit 1
 
       - name: Wait for registry index propagation
-        run: sleep 20
+        run: sleep 25
 
       - name: Patch rabbitmq dependency to use github registry (temp)
         env:
@@ -104,7 +121,12 @@ jobs:
           sed -i -E "s/^eventshop-messaging-core = .*/eventshop-messaging-core = { version = \"${CORE_VER}\", registry = \"github\" }/" eventshop-messaging-rabbitmq/Cargo.toml
           grep -E '^eventshop-messaging-core' eventshop-messaging-rabbitmq/Cargo.toml
 
-      - name: Publish rabbitmq
+      - name: Publish rabbitmq (retry)
         env:
           CARGO_REGISTRIES_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: cargo publish -p eventshop-messaging-rabbitmq --registry github --allow-dirty
+        run: |
+          for i in 1 2 3; do
+            cargo publish -p eventshop-messaging-rabbitmq --registry github --allow-dirty && exit 0
+            echo "publish rabbitmq attempt $i failed; retrying..."; sleep 10
+          done
+          echo "publish rabbitmq failed after retries" && exit 1
