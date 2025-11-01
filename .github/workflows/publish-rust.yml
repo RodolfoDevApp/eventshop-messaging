@@ -17,6 +17,20 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+
+    # Levanta RabbitMQ para los tests de integración
+    services:
+      rabbitmq:
+        image: rabbitmq:3.13-management
+        ports:
+          - 5672:5672
+          - 15672:15672
+        options: >-
+          --health-cmd="rabbitmq-diagnostics -q ping"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -24,16 +38,29 @@ jobs:
       - name: Setup Rust (stable)
         uses: dtolnay/rust-toolchain@stable
 
-      # No borres ~/.cargo; solo elimina config si existe
       - name: Remove runner cargo config file
         run: rm -f "$HOME/.cargo/config.toml"
 
-      # Build/test sin --locked (permite actualizar Cargo.lock si hace falta)
       - name: Build workspace
         run: cargo build --workspace --all-targets --verbose
 
-      - name: Test workspace
-        run: cargo test --workspace --verbose
+      # Espera a que RabbitMQ quede saludable antes de correr pruebas
+      - name: Wait for RabbitMQ
+        run: |
+          for i in {1..60}; do
+            if nc -z 127.0.0.1 5672; then echo "RabbitMQ is up"; exit 0; fi
+            echo "waiting RabbitMQ..."; sleep 2;
+          done
+          echo "RabbitMQ did not start in time" && exit 1
+
+      # Ejecuta tests (incluye smoke_it que publica/consume)
+      - name: Test workspace (with RabbitMQ)
+        env:
+          AMQP_ADDR: amqp://guest:guest@127.0.0.1:5672/%2f
+          RABBITMQ_URL: amqp://guest:guest@127.0.0.1:5672/%2f
+        run: |
+          cargo test -p eventshop-messaging-rabbitmq --verbose
+          cargo test --workspace --verbose
 
   publish:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish == 'true' }}
@@ -46,7 +73,6 @@ jobs:
       - name: Setup Rust (stable)
         uses: dtolnay/rust-toolchain@stable
 
-      # Configura el registry de GitHub SOLO para publicar
       - name: Configure Cargo registries (publish)
         run: |
           mkdir -p "$HOME/.cargo"
@@ -55,7 +81,6 @@ jobs:
           github = { index = "sparse+https://pkgs.github.com/${{ github.repository_owner }}/index/" }
           CFG
 
-      # Leer versión del core
       - name: Read core version
         id: corever
         run: |
@@ -67,7 +92,6 @@ jobs:
           CARGO_REGISTRIES_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: echo "ok"
 
-      # Publicar core
       - name: Publish core
         env:
           CARGO_REGISTRIES_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -76,7 +100,6 @@ jobs:
       - name: Wait for registry index propagation
         run: sleep 20
 
-      # Inyectar registry="github" en adapter SOLO para publicar
       - name: Patch rabbitmq dependency to use github registry (temp)
         env:
           CORE_VER: ${{ steps.corever.outputs.ver }}
@@ -84,7 +107,6 @@ jobs:
           sed -i -E "s/^eventshop-messaging-core = .*/eventshop-messaging-core = { version = \"${CORE_VER}\", registry = \"github\" }/" eventshop-messaging-rabbitmq/Cargo.toml
           grep -E '^eventshop-messaging-core' eventshop-messaging-rabbitmq/Cargo.toml
 
-      # Publicar adapter
       - name: Publish rabbitmq
         env:
           CARGO_REGISTRIES_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
