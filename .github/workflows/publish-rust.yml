@@ -24,11 +24,12 @@ jobs:
       - name: Setup Rust (stable)
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Build workspace
-        run: cargo build --workspace --all-targets --verbose
+      # Build y test en modo OFFLINE para no tocar ningun registry
+      - name: Build workspace (offline)
+        run: cargo build --workspace --all-targets --locked --offline --verbose
 
-      - name: Test workspace
-        run: cargo test --workspace --verbose
+      - name: Test workspace (offline)
+        run: cargo test --workspace --locked --offline --verbose
 
   publish:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish == 'true' }}
@@ -41,7 +42,8 @@ jobs:
       - name: Setup Rust (stable)
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Configure Cargo registries (github)
+      # Configurar alias 'github' SOLO para publicar
+      - name: Configure Cargo registries (publish)
         run: |
           mkdir -p $HOME/.cargo
           cat > $HOME/.cargo/config.toml <<'CFG'
@@ -54,14 +56,16 @@ jobs:
           CARGO_REGISTRIES_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: echo "ok"
 
+      # Publica primero el core (version nueva)
       - name: Publish core
         env:
           CARGO_REGISTRIES_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: cargo publish -p eventshop-messaging-core --registry github --allow-dirty
 
-      - name: Wait for core to be available
-        run: sleep 15
+      - name: Wait for registry index
+        run: sleep 20
 
+      # Luego el adapter de RabbitMQ (version nueva)
       - name: Publish rabbitmq
         env:
           CARGO_REGISTRIES_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
