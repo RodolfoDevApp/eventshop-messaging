@@ -14,7 +14,7 @@ publish = ["github"]
 
 [dependencies]
 # Usa el core desde el registry (NO path)
-eventshop-messaging-core = { version = "0.1.2", registry = "github" }
+eventshop-messaging-core = "0.1.2"
 
 lapin = { version = "2.3", features = ["rustls"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time"] }
