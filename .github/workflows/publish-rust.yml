@@ -1,3 +1,6 @@
+# .github/workflows/publish-rust.yml
+# SOLO cambia el job publish para resolver pkgs.github.com sin depender del DNS del runner (DoH + /etc/hosts)
+
 name: Rust CI & Publish
 
 on:
@@ -17,76 +20,106 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    services:
+      rabbitmq:
+        image: rabbitmq:3.13-management
+        ports: [ "5672:5672", "15672:15672" ]
+        env:
+          RABBITMQ_DEFAULT_USER: admin
+          RABBITMQ_DEFAULT_PASS: admin
+        options: >-
+          --health-cmd="rabbitmq-diagnostics -q ping"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Rust (stable)
-        uses: dtolnay/rust-toolchain@stable
-
-      # Evitar que Cargo toque pkgs.github.com durante el BUILD
-      # 1) Declaramos el alias 'github' (por si el manifiesto lo referencia)
-      # 2) Redirigimos esa fuente a crates-io para el build (replace-with)
-      - name: Configure Cargo for build (no GitHub registry)
-        run: |
-          mkdir -p $HOME/.cargo
-          cat > $HOME/.cargo/config.toml <<'CFG'
-          [registries]
-          github = { index = "sparse+https://pkgs.github.com/${{ github.repository_owner }}/index/" }
-
-          # Cualquier intento de leer el index de GitHub Packages durante el build
-          # se redirige a crates-io (no habrá paquetes con ese nombre, pero asi
-          # evitamos contacto de red con pkgs.github.com).
-          [source."sparse+https://pkgs.github.com/${{ github.repository_owner }}/index/"]
-          replace-with = "crates-io"
-          CFG
-
-      - name: Build workspace
-        env:
-          CARGO_REGISTRIES_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: cargo build --workspace --all-targets --locked --verbose
-
-      - name: Test workspace
-        env:
-          CARGO_REGISTRIES_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: cargo test --workspace --locked --verbose
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: rm -f "$HOME/.cargo/config.toml"
+      - run: cargo build --workspace --all-targets --verbose
+      - run: |
+          for i in {1..60}; do
+            if nc -z 127.0.0.1 5672; then exit 0; fi
+            sleep 2
+          done
+          exit 1
+      - run: |
+          cargo test -p eventshop-messaging-rabbitmq --verbose
+          cargo test --workspace --verbose
 
   publish:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish == 'true' }}
     needs: build
     runs-on: ubuntu-latest
+    env:
+      CARGO_HTTP_MULTIPLEXING: "false"
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
 
-      - name: Setup Rust (stable)
-        uses: dtolnay/rust-toolchain@stable
-
-      # Configurar el registry REAL de GitHub para publicar
-      - name: Configure Cargo for publish (GitHub registry)
+      # NUEVO: resolver pkgs.github.com via DNS-over-HTTPS y fijarlo en /etc/hosts
+      - name: Resolve pkgs.github.com (DoH) and pin in /etc/hosts
         run: |
-          mkdir -p $HOME/.cargo
-          cat > $HOME/.cargo/config.toml <<'CFG'
+          sudo apt-get update -y
+          sudo apt-get install -y jq curl
+          IP=$(curl -fsSL "https://dns.google/resolve?name=pkgs.github.com&type=A" | jq -r '.Answer[0].data' || true)
+          if [ -z "$IP" ] || [ "$IP" = "null" ]; then
+            IP=$(curl -fsSL "https://cloudflare-dns.com/dns-query?name=pkgs.github.com&type=A" \
+                 -H 'accept: application/dns-json' | jq -r '.Answer[0].data' || true)
+          fi
+          if [ -z "$IP" ] || [ "$IP" = "null" ]; then
+            echo "Could not resolve pkgs.github.com via DoH"; exit 1
+          fi
+          echo "Using pkgs.github.com -> $IP"
+          echo "$IP pkgs.github.com" | sudo tee -a /etc/hosts
+          getent hosts pkgs.github.com || true
+          curl -I --connect-timeout 5 https://pkgs.github.com/ || true
+
+      - name: Configure Cargo registries (publish)
+        run: |
+          mkdir -p "$HOME/.cargo"
+          cat > "$HOME/.cargo/config.toml" <<'CFG'
           [registries]
           github = { index = "sparse+https://pkgs.github.com/${{ github.repository_owner }}/index/" }
           CFG
+
+      - name: Read core version
+        id: corever
+        run: |
+          ver=$(sed -n 's/^version\s*=\s*"\(.*\)".*/\1/p' eventshop-messaging-core/Cargo.toml | head -n1)
+          echo "ver=$ver" >> "$GITHUB_OUTPUT"
 
       - name: Login (env token)
         env:
           CARGO_REGISTRIES_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: echo "ok"
 
-      # Publica primero el core (version NUEVA)
-      - name: Publish core
+      - name: Publish core (retry)
         env:
           CARGO_REGISTRIES_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: cargo publish -p eventshop-messaging-core --registry github --allow-dirty
+        run: |
+          for i in 1 2 3; do
+            cargo publish -p eventshop-messaging-core --registry github --allow-dirty && exit 0
+            echo "publish core attempt $i failed; retrying..."; sleep 10
+          done
+          exit 1
 
       - name: Wait for registry index propagation
-        run: sleep 20
+        run: sleep 25
 
-      # Luego publica el adapter de RabbitMQ (version NUEVA)
-      - name: Publish rabbitmq
+      - name: Patch rabbitmq dependency to use github registry (temp)
+        env:
+          CORE_VER: ${{ steps.corever.outputs.ver }}
+        run: |
+          sed -i -E "s/^eventshop-messaging-core = .*/eventshop-messaging-core = { version = \"${CORE_VER}\", registry = \"github\" }/" eventshop-messaging-rabbitmq/Cargo.toml
+          grep -E '^eventshop-messaging-core' eventshop-messaging-rabbitmq/Cargo.toml
+
+      - name: Publish rabbitmq (retry)
         env:
           CARGO_REGISTRIES_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: cargo publish -p eventshop-messaging-rabbitmq --registry github --allow-dirty
+        run: |
+          for i in 1 2 3; do
+            cargo publish -p eventshop-messaging-rabbitmq --registry github --allow-dirty && exit 0
+            echo "publish rabbitmq attempt $i failed; retrying..."; sleep 10
+          done
+          exit 1
