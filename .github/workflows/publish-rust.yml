@@ -1,3 +1,6 @@
+# .github/workflows/publish-rust.yml
+# SOLO cambia el job publish para resolver pkgs.github.com sin depender del DNS del runner (DoH + /etc/hosts)
+
 name: Rust CI & Publish
 
 on:
@@ -17,13 +20,10 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-
     services:
       rabbitmq:
         image: rabbitmq:3.13-management
-        ports:
-          - 5672:5672
-          - 15672:15672
+        ports: [ "5672:5672", "15672:15672" ]
         env:
           RABBITMQ_DEFAULT_USER: admin
           RABBITMQ_DEFAULT_PASS: admin
@@ -32,30 +32,18 @@ jobs:
           --health-interval=5s
           --health-timeout=5s
           --health-retries=30
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Rust (stable)
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Remove runner cargo config file
-        run: rm -f "$HOME/.cargo/config.toml"
-
-      - name: Build workspace
-        run: cargo build --workspace --all-targets --verbose
-
-      - name: Wait for RabbitMQ
-        run: |
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: rm -f "$HOME/.cargo/config.toml"
+      - run: cargo build --workspace --all-targets --verbose
+      - run: |
           for i in {1..60}; do
-            if nc -z 127.0.0.1 5672; then echo "RabbitMQ is up"; exit 0; fi
-            echo "waiting RabbitMQ..."; sleep 2;
+            if nc -z 127.0.0.1 5672; then exit 0; fi
+            sleep 2
           done
-          echo "RabbitMQ did not start in time" && exit 1
-
-      - name: Test workspace (with RabbitMQ)
-        run: |
+          exit 1
+      - run: |
           cargo test -p eventshop-messaging-rabbitmq --verbose
           cargo test --workspace --verbose
 
@@ -64,23 +52,28 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     env:
-      # A veces HTTP/2 da lata con proxies intermedios; forzamos HTTP/1.1
       CARGO_HTTP_MULTIPLEXING: "false"
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
 
-      - name: Setup Rust (stable)
-        uses: dtolnay/rust-toolchain@stable
-
-      # Forzar DNS publico (runner a veces no resuelve pkgs.github.com)
-      - name: Fix DNS for pkgs.github.com
+      # NUEVO: resolver pkgs.github.com via DNS-over-HTTPS y fijarlo en /etc/hosts
+      - name: Resolve pkgs.github.com (DoH) and pin in /etc/hosts
         run: |
-          sudo bash -c 'printf "nameserver 1.1.1.1\nnameserver 8.8.8.8\n" > /etc/resolv.conf'
-          echo "Testing DNS..."
-          getent hosts pkgs.github.com
-          echo "Testing HTTPS reachability..."
-          curl -I --retry 5 --retry-all-errors --connect-timeout 5 https://pkgs.github.com/ || true
+          sudo apt-get update -y
+          sudo apt-get install -y jq curl
+          IP=$(curl -fsSL "https://dns.google/resolve?name=pkgs.github.com&type=A" | jq -r '.Answer[0].data' || true)
+          if [ -z "$IP" ] || [ "$IP" = "null" ]; then
+            IP=$(curl -fsSL "https://cloudflare-dns.com/dns-query?name=pkgs.github.com&type=A" \
+                 -H 'accept: application/dns-json' | jq -r '.Answer[0].data' || true)
+          fi
+          if [ -z "$IP" ] || [ "$IP" = "null" ]; then
+            echo "Could not resolve pkgs.github.com via DoH"; exit 1
+          fi
+          echo "Using pkgs.github.com -> $IP"
+          echo "$IP pkgs.github.com" | sudo tee -a /etc/hosts
+          getent hosts pkgs.github.com || true
+          curl -I --connect-timeout 5 https://pkgs.github.com/ || true
 
       - name: Configure Cargo registries (publish)
         run: |
@@ -109,7 +102,7 @@ jobs:
             cargo publish -p eventshop-messaging-core --registry github --allow-dirty && exit 0
             echo "publish core attempt $i failed; retrying..."; sleep 10
           done
-          echo "publish core failed after retries" && exit 1
+          exit 1
 
       - name: Wait for registry index propagation
         run: sleep 25
@@ -129,4 +122,4 @@ jobs:
             cargo publish -p eventshop-messaging-rabbitmq --registry github --allow-dirty && exit 0
             echo "publish rabbitmq attempt $i failed; retrying..."; sleep 10
           done
-          echo "publish rabbitmq failed after retries" && exit 1
+          exit 1
