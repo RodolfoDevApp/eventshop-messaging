@@ -24,24 +24,12 @@ jobs:
       - name: Setup Rust (stable)
         uses: dtolnay/rust-toolchain@stable
 
-      # Registrar el alias 'github' para el BUILD y evitar fallos al resolver pkgs.github.com
-      - name: Configure Cargo registry (build)
-        run: |
-          mkdir -p $HOME/.cargo
-          cat > $HOME/.cargo/config.toml <<'CFG'
-          [registries]
-          github = { index = "sparse+https://pkgs.github.com/${{ github.repository_owner }}/index/" }
-          CFG
+      # Build y test en modo OFFLINE para no tocar ningun registry
+      - name: Build workspace (offline)
+        run: cargo build --workspace --all-targets --locked --offline --verbose
 
-      - name: Build workspace
-        env:
-          CARGO_REGISTRIES_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: cargo build --workspace --all-targets --locked --verbose
-
-      - name: Test workspace
-        env:
-          CARGO_REGISTRIES_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: cargo test --workspace --locked --verbose
+      - name: Test workspace (offline)
+        run: cargo test --workspace --locked --offline --verbose
 
   publish:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish == 'true' }}
@@ -54,7 +42,7 @@ jobs:
       - name: Setup Rust (stable)
         uses: dtolnay/rust-toolchain@stable
 
-      # Alias 'github' para PUBLICAR (aqui tambien vale usar la variable de Actions)
+      # Configurar alias 'github' SOLO para publicar
       - name: Configure Cargo registries (publish)
         run: |
           mkdir -p $HOME/.cargo
