@@ -1,4 +1,4 @@
-# Cargo.toml (root)
+# Cargo.toml (workspace root)
 [workspace]
 members = [
   "eventshop-messaging-core",
@@ -6,7 +6,8 @@ members = [
 ]
 resolver = "2"
 
-# Durante CI: construir usando el core local.
-# Nota: La clave de patch debe ser el URL exacto del index (incluye 'sparse+').
+# Forzar que, durante el build en CI, el core se tome del path local
+# y NO se intente resolver desde pkgs.github.com.
+# Usa owner LITERAL (no variables de Actions).
 [patch."sparse+https://pkgs.github.com/RodolfoDevApp/index/"]
 eventshop-messaging-core = { path = "eventshop-messaging-core" }

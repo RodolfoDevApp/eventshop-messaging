@@ -1,6 +1,7 @@
+# eventshop-messaging-rabbitmq/Cargo.toml
 [package]
 name = "eventshop-messaging-rabbitmq"
-version = "0.1.1"            # <-- sube version antes de publicar
+version = "0.1.2"                      # bump de version
 edition = "2021"
 license = "MIT"
 readme = "README.md"
@@ -9,11 +10,11 @@ homepage = "https://github.com/rodolfodevapp/eventshop-messaging"
 description = "RabbitMQ transport for EventShop messaging."
 keywords = ["messaging", "rabbitmq", "events", "ddd", "cqrs"]
 categories = ["network-programming", "asynchronous"]
-publish = ["github"]          # <-- clave
+publish = ["github"]
 
 [dependencies]
 # Usa el core desde el registry (NO path)
-eventshop-messaging-core = { version = "0.1.1", registry = "github" }
+eventshop-messaging-core = { version = "0.1.2", registry = "github" }
 
 lapin = { version = "2.3", features = ["rustls"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time"] }
