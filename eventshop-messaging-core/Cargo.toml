@@ -9,7 +9,7 @@ homepage = "https://github.com/rodolfodevapp/eventshop-messaging"
 description = "Core contracts (EventBus, callbacks, DTOs) for EventShop messaging."
 keywords = ["messaging", "events", "ddd", "cqrs"]
 categories = ["network-programming", "asynchronous"]
-publish = ["github"]                   # autoriza publicar a registry alterno
+publish = true
 
 [dependencies]
 anyhow = "1"

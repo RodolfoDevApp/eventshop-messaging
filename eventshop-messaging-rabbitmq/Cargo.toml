@@ -10,7 +10,7 @@ homepage = "https://github.com/rodolfodevapp/eventshop-messaging"
 description = "RabbitMQ transport for EventShop messaging."
 keywords = ["messaging", "rabbitmq", "events", "ddd", "cqrs"]
 categories = ["network-programming", "asynchronous"]
-publish = ["github"]
+publish = true
 
 [dependencies]
 # Usa el core desde el registry (NO path)
