@@ -24,11 +24,24 @@ jobs:
       - name: Setup Rust (stable)
         uses: dtolnay/rust-toolchain@stable
 
+      # Registrar el alias 'github' para el BUILD y evitar fallos al resolver pkgs.github.com
+      - name: Configure Cargo registry (build)
+        run: |
+          mkdir -p $HOME/.cargo
+          cat > $HOME/.cargo/config.toml <<'CFG'
+          [registries]
+          github = { index = "sparse+https://pkgs.github.com/${{ github.repository_owner }}/index/" }
+          CFG
+
       - name: Build workspace
-        run: cargo build --workspace --all-targets --verbose
+        env:
+          CARGO_REGISTRIES_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: cargo build --workspace --all-targets --locked --verbose
 
       - name: Test workspace
-        run: cargo test --workspace --verbose
+        env:
+          CARGO_REGISTRIES_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: cargo test --workspace --locked --verbose
 
   publish:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish == 'true' }}
@@ -41,7 +54,8 @@ jobs:
       - name: Setup Rust (stable)
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Configure Cargo registries (github)
+      # Alias 'github' para PUBLICAR (aqui tambien vale usar la variable de Actions)
+      - name: Configure Cargo registries (publish)
         run: |
           mkdir -p $HOME/.cargo
           cat > $HOME/.cargo/config.toml <<'CFG'
@@ -54,14 +68,16 @@ jobs:
           CARGO_REGISTRIES_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: echo "ok"
 
+      # Publica primero el core (version nueva)
       - name: Publish core
         env:
           CARGO_REGISTRIES_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: cargo publish -p eventshop-messaging-core --registry github --allow-dirty
 
-      - name: Wait for core to be available
-        run: sleep 15
+      - name: Wait for registry index
+        run: sleep 20
 
+      # Luego el adapter de RabbitMQ (version nueva)
       - name: Publish rabbitmq
         env:
           CARGO_REGISTRIES_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
