@@ -18,13 +18,15 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
-    # Levanta RabbitMQ para los tests de integración
     services:
       rabbitmq:
         image: rabbitmq:3.13-management
         ports:
           - 5672:5672
           - 15672:15672
+        env:
+          RABBITMQ_DEFAULT_USER: admin
+          RABBITMQ_DEFAULT_PASS: admin
         options: >-
           --health-cmd="rabbitmq-diagnostics -q ping"
           --health-interval=5s
@@ -44,7 +46,6 @@ jobs:
       - name: Build workspace
         run: cargo build --workspace --all-targets --verbose
 
-      # Espera a que RabbitMQ quede saludable antes de correr pruebas
       - name: Wait for RabbitMQ
         run: |
           for i in {1..60}; do
@@ -53,11 +54,7 @@ jobs:
           done
           echo "RabbitMQ did not start in time" && exit 1
 
-      # Ejecuta tests (incluye smoke_it que publica/consume)
       - name: Test workspace (with RabbitMQ)
-        env:
-          AMQP_ADDR: amqp://guest:guest@127.0.0.1:5672/%2f
-          RABBITMQ_URL: amqp://guest:guest@127.0.0.1:5672/%2f
         run: |
           cargo test -p eventshop-messaging-rabbitmq --verbose
           cargo test --workspace --verbose
