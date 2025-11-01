@@ -1,7 +1,3 @@
-# .github/workflows/publish-rust.yml
-# Publica AUTOMATICAMENTE en crates.io: core primero y luego rabbitmq.
-# Se dispara al pushear un tag semver (vX.Y.Z). No requiere pasos manuales.
-
 name: Rust CI & Publish (crates.io)
 
 on:
