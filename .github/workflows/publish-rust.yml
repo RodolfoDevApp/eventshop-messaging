@@ -24,16 +24,16 @@ jobs:
       - name: Setup Rust (stable)
         uses: dtolnay/rust-toolchain@stable
 
-      # Limpia SOLO el archivo de config (no borres ~/.cargo o eliminas cargo)
+      # No borres ~/.cargo; solo elimina config si existe
       - name: Remove runner cargo config file
         run: rm -f "$HOME/.cargo/config.toml"
 
-      # Build/test neutrales: solo crates.io; el core va por path via [patch.crates-io]
+      # Build/test sin --locked (permite actualizar Cargo.lock si hace falta)
       - name: Build workspace
-        run: cargo build --workspace --all-targets --locked --verbose
+        run: cargo build --workspace --all-targets --verbose
 
       - name: Test workspace
-        run: cargo test --workspace --locked --verbose
+        run: cargo test --workspace --verbose
 
   publish:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish == 'true' }}
@@ -55,6 +55,7 @@ jobs:
           github = { index = "sparse+https://pkgs.github.com/${{ github.repository_owner }}/index/" }
           CFG
 
+      # Leer versión del core
       - name: Read core version
         id: corever
         run: |
@@ -66,7 +67,7 @@ jobs:
           CARGO_REGISTRIES_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: echo "ok"
 
-      # Publica primero el core
+      # Publicar core
       - name: Publish core
         env:
           CARGO_REGISTRIES_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -75,16 +76,15 @@ jobs:
       - name: Wait for registry index propagation
         run: sleep 20
 
-      # Inyecta registry="github" en el adapter SOLO para publicar (usa la version del core leida arriba)
+      # Inyectar registry="github" en adapter SOLO para publicar
       - name: Patch rabbitmq dependency to use github registry (temp)
         env:
           CORE_VER: ${{ steps.corever.outputs.ver }}
         run: |
           sed -i -E "s/^eventshop-messaging-core = .*/eventshop-messaging-core = { version = \"${CORE_VER}\", registry = \"github\" }/" eventshop-messaging-rabbitmq/Cargo.toml
-          echo "Effective line:"
           grep -E '^eventshop-messaging-core' eventshop-messaging-rabbitmq/Cargo.toml
 
-      # Publica el adapter
+      # Publicar adapter
       - name: Publish rabbitmq
         env:
           CARGO_REGISTRIES_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
