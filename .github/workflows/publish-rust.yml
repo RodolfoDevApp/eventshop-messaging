@@ -3,7 +3,15 @@ name: Rust CI & Publish (crates.io)
 on:
   push:
     tags:
-      - "v*.*.*"   # crea un tag como v0.1.3 y pushealo; esto dispara la publicacion
+      - "v*.*.*"            # publica al pushear un tag vX.Y.Z
+  workflow_dispatch:        # habilita botón "Run workflow"
+    inputs:
+      publish:
+        description: "Publicar ahora en crates.io"
+        required: true
+        default: "true"
+        type: choice
+        options: ["true","false"]
 
 permissions:
   contents: read
@@ -28,18 +36,12 @@ jobs:
           --health-timeout=5s
           --health-retries=30
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Rust (stable)
-        uses: dtolnay/rust-toolchain@stable
-
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
       - name: Ensure no runner cargo config leaks
         run: rm -f "$HOME/.cargo/config.toml"
-
       - name: Build workspace
         run: cargo build --workspace --all-targets --verbose
-
       - name: Wait for RabbitMQ
         run: |
           for i in {1..60}; do
@@ -47,34 +49,28 @@ jobs:
             echo "waiting RabbitMQ..."; sleep 2
           done
           exit 1
-
       - name: Test workspace (with RabbitMQ)
         run: |
           cargo test -p eventshop-messaging-rabbitmq --verbose
           cargo test --workspace --verbose
 
   publish:
+    # Corre si: a) hay tag semver, o b) se ejecuta manual con publish=true
+    if: ${{ startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.publish == 'true') }}
     needs: build
     runs-on: ubuntu-latest
     env:
-      # Token de crates.io: configura el secreto CRATES_IO_TOKEN en el repositorio
       CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
       CARGO_HTTP_MULTIPLEXING: "false"
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Rust (stable)
-        uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
 
       - name: Sanity print versions
         run: |
-          echo "core:"
-          grep -E '^(name|version) =' eventshop-messaging-core/Cargo.toml
-          echo "rabbitmq:"
-          grep -E '^(name|version) =' eventshop-messaging-rabbitmq/Cargo.toml
-          echo "rabbitmq dep core:"
-          grep -E '^eventshop-messaging-core' eventshop-messaging-rabbitmq/Cargo.toml || true
+          echo "core:" && grep -E '^(name|version) =' eventshop-messaging-core/Cargo.toml
+          echo "rabbitmq:" && grep -E '^(name|version) =' eventshop-messaging-rabbitmq/Cargo.toml
+          echo "rabbitmq dep core:" && (grep -E '^eventshop-messaging-core' eventshop-messaging-rabbitmq/Cargo.toml || true)
 
       - name: Publish core to crates.io (retry)
         run: |
