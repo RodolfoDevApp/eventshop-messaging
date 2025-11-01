@@ -24,12 +24,32 @@ jobs:
       - name: Setup Rust (stable)
         uses: dtolnay/rust-toolchain@stable
 
-      # Build y test en modo OFFLINE para no tocar ningun registry
-      - name: Build workspace (offline)
-        run: cargo build --workspace --all-targets --locked --offline --verbose
+      # Evitar que Cargo toque pkgs.github.com durante el BUILD
+      # 1) Declaramos el alias 'github' (por si el manifiesto lo referencia)
+      # 2) Redirigimos esa fuente a crates-io para el build (replace-with)
+      - name: Configure Cargo for build (no GitHub registry)
+        run: |
+          mkdir -p $HOME/.cargo
+          cat > $HOME/.cargo/config.toml <<'CFG'
+          [registries]
+          github = { index = "sparse+https://pkgs.github.com/${{ github.repository_owner }}/index/" }
 
-      - name: Test workspace (offline)
-        run: cargo test --workspace --locked --offline --verbose
+          # Cualquier intento de leer el index de GitHub Packages durante el build
+          # se redirige a crates-io (no habrá paquetes con ese nombre, pero asi
+          # evitamos contacto de red con pkgs.github.com).
+          [source."sparse+https://pkgs.github.com/${{ github.repository_owner }}/index/"]
+          replace-with = "crates-io"
+          CFG
+
+      - name: Build workspace
+        env:
+          CARGO_REGISTRIES_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: cargo build --workspace --all-targets --locked --verbose
+
+      - name: Test workspace
+        env:
+          CARGO_REGISTRIES_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: cargo test --workspace --locked --verbose
 
   publish:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish == 'true' }}
@@ -42,8 +62,8 @@ jobs:
       - name: Setup Rust (stable)
         uses: dtolnay/rust-toolchain@stable
 
-      # Configurar alias 'github' SOLO para publicar
-      - name: Configure Cargo registries (publish)
+      # Configurar el registry REAL de GitHub para publicar
+      - name: Configure Cargo for publish (GitHub registry)
         run: |
           mkdir -p $HOME/.cargo
           cat > $HOME/.cargo/config.toml <<'CFG'
@@ -56,16 +76,16 @@ jobs:
           CARGO_REGISTRIES_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: echo "ok"
 
-      # Publica primero el core (version nueva)
+      # Publica primero el core (version NUEVA)
       - name: Publish core
         env:
           CARGO_REGISTRIES_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: cargo publish -p eventshop-messaging-core --registry github --allow-dirty
 
-      - name: Wait for registry index
+      - name: Wait for registry index propagation
         run: sleep 20
 
-      # Luego el adapter de RabbitMQ (version nueva)
+      # Luego publica el adapter de RabbitMQ (version NUEVA)
       - name: Publish rabbitmq
         env:
           CARGO_REGISTRIES_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
